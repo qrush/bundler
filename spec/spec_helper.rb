@@ -5,6 +5,7 @@ require 'fileutils'
 require 'rubygems'
 require 'bundler'
 require 'rspec'
+require 'webrick'
 
 # Require the correct version of popen for the current platform
 if RbConfig::CONFIG['host_os'] =~ /mingw|mswin/
@@ -28,6 +29,11 @@ Spec::Rubygems.setup
 FileUtils.rm_rf(Spec::Path.gem_repo1)
 ENV['RUBYOPT'] = "-I#{Spec::Path.root}/spec/support/rubygems_hax"
 ENV['BUNDLE_SPEC_RUN'] = "true"
+
+class NilLog < WEBrick::Log
+  def log(level, data) #Do nothing
+  end
+end
 
 RSpec.configure do |config|
   config.include Spec::Builders
@@ -58,6 +64,16 @@ RSpec.configure do |config|
 
   config.before :all do
     build_repo1
+    [gem_repo1, gem_repo2, gem_repo3].each_with_index do |remote, index|
+      Thread.start do
+        server = WEBrick::HTTPServer.new :BindAddress => "localhost",
+                                         :Port        => 9000 + index,
+                                         :Logger      => NilLog.new
+
+        server.mount("/", WEBrick::HTTPServlet::FileHandler, remote, true)
+        server.start
+      end
+    end
   end
 
   config.before :each do
